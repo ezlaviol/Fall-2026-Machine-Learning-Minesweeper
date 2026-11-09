@@ -142,7 +142,7 @@ def classify_grid(grid, templates):
         for tile in row:
             tile_resized = cv2.resize(tile, (16, 16), interpolation=cv2.INTER_AREA)
             gridState.append(classify(tile_resized, templates))  # Classify each tile in the grid
-    if DEBUG_CLASSIFY and DEBUG_VERBOSE: print(gridState)  # Print the classified grid state after processing all images
+    if DEBUG_CLASSIFY: print(gridState)  # Print the classified grid state after processing all images
     return gridState
 
 
