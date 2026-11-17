@@ -153,7 +153,7 @@ def classify_grid(grid, templates):
     if DEBUG_CLASSIFY: print(gridState)  # Print the classified grid state after processing all images
     return gridState
 
-def from_gamestate_to_grid(number, templates, capture_first=False):
+def from_gamestate_to_grid(number, templates, capture_first=True):
     if capture_first:
         capture_gamestate(number)
     return classify_grid(number, templates)

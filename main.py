@@ -35,9 +35,15 @@ gridStates = []
 
 # Process each grid image
 for i in range(len(list(FOLDER_GRIDS.glob(f"{TARGET_FILE_PREFIX}*")))):
-    gridStates.append(from_gamestate_to_grid(i, templates))
-# Each grid image is processed and classified, 
-# and the resulting grid states are stored in gridStates.
+    gridStates.append(from_gamestate_to_grid(i, templates, False))
+    # Each grid image is processed and classified, 
+    # and the resulting grid states are stored in gridStates.
+
+    # future psuedocode
+    # - analyze the new grid state with CSP
+    # - if no safe moves found by CSP, apply DQN instead
+    # - update the game state based on the chosen move
+    # - make a new grid image
 
 # tile = cv2.resize(tiles[0][0], (16, 16), interpolation=cv2.INTER_AREA)
 # print(classify(tile, templates))  # Classify the top-left tile
