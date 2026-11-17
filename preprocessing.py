@@ -10,9 +10,9 @@ from ctypes import wintypes
 
 # ----- CONSTANTS -----
 DEBUG_VERBOSE = False
-DEBUG_DICTIONARY = True
-DEBUG_IMAGE = True
-DEBUG_CLASSIFY = True
+DEBUG_DICTIONARY = False
+DEBUG_IMAGE = False
+DEBUG_CLASSIFY = False
 
 GRID_SIDES = 34
 GRID_TOP = 270

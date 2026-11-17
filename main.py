@@ -1,5 +1,8 @@
-from preprocessing import FOLDER_TILES, FOLDER_GRIDS, TARGET_FILE_PREFIX, DEBUG_DICTIONARY, DEBUG_VERBOSE
+from preprocessing import FOLDER_TILES, FOLDER_GRIDS, TARGET_FILE_PREFIX
+from preprocessing import DEBUG_DICTIONARY, DEBUG_VERBOSE
+from preprocessing import TILE_COLUMNS, TILE_ROWS
 from preprocessing import from_gamestate_to_grid, cv2
+from csp import analyze_grid_with_csp, DEBUG_CSP
 
 # ----- MAIN CODE -----
 tileNames = []              # empty list of file names, to be populated
@@ -35,12 +38,26 @@ gridStates = []
 
 # Process each grid image
 for i in range(len(list(FOLDER_GRIDS.glob(f"{TARGET_FILE_PREFIX}*")))):
-    gridStates.append(from_gamestate_to_grid(i, templates, False))
+    gridStates.append(from_gamestate_to_grid(i, templates, True))
     # Each grid image is processed and classified, 
     # and the resulting grid states are stored in gridStates.
 
+    # analyze the new grid state with CSP
+    if DEBUG_CSP:
+        print(f"Grid {i}:\n{gridStates[i]}")
+    safeMoves = analyze_grid_with_csp(gridStates[i])
+    if DEBUG_CSP:
+        debugSafeMoves = []
+        for moves in safeMoves:
+            row = (moves // TILE_COLUMNS) + 1
+            column = (moves % TILE_COLUMNS) + 1
+            debugSafeMoves.append([row, column])
+        print(f"Safe moves: {debugSafeMoves}")
+
+    if not safeMoves:
+        print(f"No safe moves found for Grid {i}")
+
     # future psuedocode
-    # - analyze the new grid state with CSP
     # - if no safe moves found by CSP, apply DQN instead
     # - update the game state based on the chosen move
     # - make a new grid image
