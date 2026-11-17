@@ -41,26 +41,34 @@ for i in range(len(list(FOLDER_GRIDS.glob(f"{TARGET_FILE_PREFIX}*")))):
     gridStates.append(from_gamestate_to_grid(i, templates, True))
     # Each grid image is processed and classified, 
     # and the resulting grid states are stored in gridStates.
-
-    # analyze the new grid state with CSP
     if DEBUG_CSP:
         print(f"Grid {i}:\n{gridStates[i]}")
-    safeMoves = analyze_grid_with_csp(gridStates[i])
-    if DEBUG_CSP:
-        debugSafeMoves = []
-        for moves in safeMoves:
-            row = (moves // TILE_COLUMNS) + 1
-            column = (moves % TILE_COLUMNS) + 1
-            debugSafeMoves.append([row, column])
-        print(f"Safe moves: {debugSafeMoves}")
 
-    if not safeMoves:
-        print(f"No safe moves found for Grid {i}")
+    # analyze the new grid state with CSP
+    safeFlags, safePicks = analyze_grid_with_csp(gridStates[i])
+    print(f"Safe Flags: {safeFlags}\nSafe Picks: {safePicks}")
+    if DEBUG_CSP:
+        debugSafeFlags = []
+        for tile_idx in safeFlags:
+            row = (tile_idx // TILE_COLUMNS) + 1
+            column = (tile_idx % TILE_COLUMNS) + 1
+            debugSafeFlags.append([row, column])
+        print(f"You may safely flag (row, col): {debugSafeFlags}")
+
+        debugSafePicks = []
+        for tile_idx in safePicks:
+            row = (tile_idx // TILE_COLUMNS) + 1
+            column = (tile_idx % TILE_COLUMNS) + 1
+            debugSafePicks.append([row, column])
+        print(f"You may safely click (row, col): {debugSafePicks}")
+
+
+    # if safeFlags:
+    #     # flag_tile(safeFlags[0])
+    # if not safeFlags:
+    #     print(f"No safe moves found for Grid {i}")
 
     # future psuedocode
     # - if no safe moves found by CSP, apply DQN instead
     # - update the game state based on the chosen move
     # - make a new grid image
-
-# tile = cv2.resize(tiles[0][0], (16, 16), interpolation=cv2.INTER_AREA)
-# print(classify(tile, templates))  # Classify the top-left tile
