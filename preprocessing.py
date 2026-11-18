@@ -14,18 +14,22 @@ DEBUG_DICTIONARY = False
 DEBUG_IMAGE = False
 DEBUG_CLASSIFY = False
 
+GRID_SCALE = 1
 GRID_SIDES = 34
 GRID_TOP = 270
 GRID_BOTTOM = 34
-TILE_WIDTH = 32
-TILE_HEIGHT = 32
+TILE_WIDTH = 32 * GRID_SCALE
+TILE_HEIGHT = 32 * GRID_SCALE
+
 TILE_COLUMNS = 9
 TILE_ROWS = 9
+TOTAL_MINES = 10
 
 DWMWA_EXTENDED_FRAME_BOUNDS = 9
 
 FOLDER_TILES = Path('./tiles/')    # points to the tiles folder
 FOLDER_GRIDS = Path('./grids/')    # points to the grids folder
+FOLDER_GRIDS.mkdir(parents=True, exist_ok=True)
 
 TARGET_WORD = "uncut"  # find all images with this keyword
 TARGET_WORD_PROCESSED = "cut"
@@ -50,23 +54,59 @@ def get_visible_bounds(win):
         raise OSError(f"DwmGetWindowAttribute failed: {result}")
     return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
 
-# Captures the game interface, saving it as a screenshot with the given number.
-def capture_gamestate(number):
-    windows = gw.getWindowsWithTitle(TARGET_APPLICATION)
+# Finds the Minesweeper window, restores it if minimized, and brings it to the foreground.
+def get_game_window():
+    # Filter out small dialog boxes (like the New Record Time popup) so we always grab the main board
+    windows = [
+        w for w in gw.getWindowsWithTitle(TARGET_APPLICATION)
+        if w.width > 250 and w.height > 250
+    ]
     if not windows:
         raise RuntimeError(f"The {TARGET_APPLICATION} window not found")
 
     win = windows[0]
-    print(f"Bring {TARGET_APPLICATION} to the foreground. Capturing in 5 seconds...")
-    pyautogui.sleep(5)
+    hwnd = wintypes.HWND(win._hWnd)
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
 
+    # 1. Restore if minimized
     if win.isMinimized:
-        raise RuntimeError(f"{TARGET_APPLICATION} is minimized; restore it before capture")
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE = 9
+        pyautogui.sleep(0.15)
+
+    # 2. Bypass Windows focus-stealing prevention
+    foreground_hwnd = user32.GetForegroundWindow()
+    if foreground_hwnd != hwnd:
+        foreground_thread = user32.GetWindowThreadProcessId(foreground_hwnd, None)
+        current_thread = kernel32.GetCurrentThreadId()
+
+        # Attach input threads so Windows allows focus transfer
+        if foreground_thread != current_thread:
+            user32.AttachThreadInput(foreground_thread, current_thread, True)
+
+        # Sending an Alt key event unlocks SetForegroundWindow on Windows 10/11
+        pyautogui.press('alt')
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+
+        if foreground_thread != current_thread:
+            user32.AttachThreadInput(foreground_thread, current_thread, False)
+
+        pyautogui.sleep(0.25)
+
+    return win
+
+# Captures the game interface automatically, saving it as a screenshot with the given number.
+def capture_gamestate(number):
+    win = get_game_window()
+    win_left, win_top, _, _ = get_visible_bounds(win)
+    pyautogui.moveTo(win_left + 10, win_top + 10)  # Park cursor off the grid
 
     screenshot = pyautogui.screenshot(
         region=get_visible_bounds(win)
     )
     screenshot.save(f"grids/{TARGET_WORD} gamestate {number}.png")
+
 
 # Given a cropped tile image, classify does the following:
 
@@ -142,9 +182,9 @@ def process_grid(count):
 
 # Takes an unclassified, raw grid index and a dictionary of templates,
 # returns the classified grid state as a list of tile classes.
-def classify_grid(grid, templates):
+def classify_grid(grid, templates, rows=TILE_ROWS, columns=TILE_COLUMNS):
     screenshot_grid = process_grid(grid)
-    tiles = split_grid(np.array(screenshot_grid), columns=TILE_COLUMNS, rows=TILE_ROWS)
+    tiles = split_grid(np.array(screenshot_grid), columns=columns, rows=rows)
     gridState = []
     for row in tiles:
         for tile in row:
@@ -153,7 +193,7 @@ def classify_grid(grid, templates):
     if DEBUG_CLASSIFY: print(gridState)  # Print the classified grid state after processing all images
     return gridState
 
-def from_gamestate_to_grid(number, templates, capture_first=True):
+def from_gamestate_to_grid(number, templates, capture_first=True, rows=TILE_ROWS, columns=TILE_COLUMNS):
     if capture_first:
         capture_gamestate(number)
-    return classify_grid(number, templates)
+    return classify_grid(number, templates, rows, columns)
