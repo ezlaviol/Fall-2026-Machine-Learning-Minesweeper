@@ -1,17 +1,28 @@
-import random
+import random, sys
 from collections import deque
-from preprocessing import TILE_ROWS, TILE_COLUMNS
+from pathlib import Path
+from preprocessing import TILE_ROWS, TILE_COLUMNS, TOTAL_MINES
 from csp import analyze_grid_with_csp
 from dqn import DQNAgent
 from dqn import GAMMA
 
+MODEL_PATH = "minesweeper_dqn.pth"  # Path to the trained DQN model
+MODELS_FOLDER = Path("models")
+MODELS_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# Fast 9x9 Minesweeper environment matching XP Minesweeper Classic rules:
-#   - Standard Beginner board: 9x9 grid with 10 mines.
-#   - First-click protection: mines are placed AFTER the first click so the
-#     first move never triggers a mine.
-#   - Flood-fill reveal for empty ('Checked') tiles.
-#   - Emits the exact same 81-element string list format as preprocessing.py.
+# Ensures the 'models/' directory exists and places bare filenames inside it
+# (e.g., 'minesweeper_dqn.pth' -> 'models/minesweeper_dqn.pth'), while still
+# allowing explicit paths like 'models/custom.pth'.
+def resolve_model_path(model_arg):
+    MODELS_FOLDER.mkdir(parents=True, exist_ok=True)
+    path = Path(model_arg)
+    if path.parent == Path("."):
+        return MODELS_FOLDER / path.name
+    return path
+
+# Fast Minesweeper environment matching XP Minesweeper Classic rules:
+# Mines are placed AFTER the first click so the first move never triggers a mine.
+# Flood-fill reveal for empty (checked) tiles.
 class MinesweeperEnv:
     def __init__(self, rows=TILE_ROWS, cols=TILE_COLUMNS, num_mines=10):
         self.rows = rows
@@ -135,9 +146,19 @@ class MinesweeperEnv:
 
 # Trains the DQN on forced-guess states while letting the CSP handle
 # all deterministic moves, matching how main.py runs in production.
-def train_hybrid_agent(episodes=10000, save_path="minesweeper_dqn.pth"):
-    env = MinesweeperEnv()
+def train_hybrid_agent(
+    episodes=10000,
+    rows=TILE_ROWS,
+    cols=TILE_COLUMNS,
+    num_mines=TOTAL_MINES,
+    save_path=MODEL_PATH,
+):
+    save_path = resolve_model_path(save_path)
+
+    env = MinesweeperEnv(rows=rows, cols=cols, num_mines=num_mines)
     agent = DQNAgent(
+        rows=rows,
+        cols=cols,
         lr=1e-3,
         gamma=GAMMA,
         epsilon_start=1.0,
@@ -145,20 +166,23 @@ def train_hybrid_agent(episodes=10000, save_path="minesweeper_dqn.pth"):
         epsilon_decay=0.9995,
     )
 
+    starting_tile = (rows // 2) * cols + (cols // 2)
     wins = 0
     recent_wins = deque(maxlen=500)
 
     for ep in range(1, episodes + 1):
         state = env.reset()
 
-        # First move: pick center tile (index 40) to maximize flood-fill opening
-        state, _, done, info = env.step(40)
+        # First move: pick center tile to maximize flood-fill opening
+        state, _, done, info = env.step(starting_tile)
 
         while not done:
             # 1. Let CSP solve all deterministic flags & picks first
-            safe_flags, safe_picks, _ = analyze_grid_with_csp(state)
+            safe_flags, safe_picks, invalid_flags = analyze_grid_with_csp(
+                state, total_mines=num_mines, rows=rows, cols=cols
+            )
 
-            if safe_flags or safe_picks:
+            if safe_flags or safe_picks or invalid_flags:
                 for f in safe_flags:
                     env.flag(f)
                 for p in safe_picks:
@@ -194,10 +218,84 @@ def train_hybrid_agent(episodes=10000, save_path="minesweeper_dqn.pth"):
     agent.save(save_path)
     print(f"\nTraining complete! Saved weights to {save_path}")
 
+# Evaluates the hybrid agent (CSP + DQN) on a specified number of games.
+def evaluate_hybrid_agent(
+    games=1000,
+    rows=TILE_ROWS,
+    cols=TILE_COLUMNS,
+    num_mines=TOTAL_MINES,
+    model_path=MODEL_PATH,
+):
+    model_path = resolve_model_path(model_path)
+
+    env = MinesweeperEnv(rows=rows, cols=cols, num_mines=num_mines)
+    agent = DQNAgent(rows=rows, cols=cols)
+    agent.load(str(model_path))
+
+    starting_tile = (rows // 2) * cols + (cols // 2)
+    wins = 0
+
+    # play the specified number of games and track wins.
+    for _ in range(games):
+        state = env.reset()
+        state, _, done, info = env.step(starting_tile)
+
+        while not done:
+            safe_flags, safe_picks, _ = analyze_grid_with_csp(
+                state, total_mines=num_mines, rows=rows, cols=cols
+            )
+            if safe_flags or safe_picks:
+                for f in safe_flags:
+                    env.flag(f)
+                for p in safe_picks:
+                    state, _, done, info = env.step(p)
+                    if done:
+                        break
+                if not done:
+                    state = env.get_grid_state()
+                continue
+
+            action = agent.select_action(state, training=False)
+            if action is None:
+                break
+            state, _, done, info = env.step(action)
+
+        wins += int(info.get("won", False))
+
+    win_rate = (wins / games) * 100
+    print(f"Evaluated {games} games on {rows}x{cols} ({num_mines} mines): {win_rate:.2f}% win rate ({wins}/{games})")
+
 
 if __name__ == "__main__":
-    # Disable verbose CSP prints during fast training
     import csp
     csp.DEBUG_CSP = False
 
-    train_hybrid_agent(episodes=10000)
+    mode = "train"
+    episodes = 10000
+    rows = TILE_ROWS
+    cols = TILE_COLUMNS
+    num_mines = TOTAL_MINES
+    model_path = MODEL_PATH
+
+    for arg in sys.argv[1:]:
+        lower_arg = arg.lower()
+        if lower_arg in ("train", "eval"):
+            mode = lower_arg
+        elif lower_arg.startswith("episodes=") or lower_arg.startswith("games="):
+            episodes = int(lower_arg.split("=", 1)[1])
+        elif lower_arg.startswith("rows="):
+            rows = int(lower_arg.split("=", 1)[1])
+        elif lower_arg.startswith("cols="):
+            cols = int(lower_arg.split("=", 1)[1])
+        elif lower_arg.startswith("mines="):
+            num_mines = int(lower_arg.split("=", 1)[1])
+        elif lower_arg.startswith("model=") or lower_arg.startswith("save_path="):
+            raw_path = Path(arg.split("=", 1)[1])
+            model_path = MODELS_FOLDER / raw_path.name if raw_path.parent == Path(".") else raw_path
+        else:
+            raise ValueError(f"Unknown argument: {arg!r}")
+
+    if mode == "eval":
+        evaluate_hybrid_agent(games=episodes, rows=rows, cols=cols, num_mines=num_mines, model_path=model_path)
+    else:
+        train_hybrid_agent(episodes=episodes, rows=rows, cols=cols, num_mines=num_mines, save_path=model_path)

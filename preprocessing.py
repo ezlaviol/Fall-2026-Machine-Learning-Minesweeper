@@ -59,7 +59,7 @@ def get_game_window():
     # Filter out small dialog boxes (like the New Record Time popup) so we always grab the main board
     windows = [
         w for w in gw.getWindowsWithTitle(TARGET_APPLICATION)
-        if w.width > 250 and w.height > 250
+        if w.width > 200 and w.height > 200
     ]
     if not windows:
         raise RuntimeError(f"The {TARGET_APPLICATION} window not found")
@@ -98,6 +98,7 @@ def get_game_window():
 
 # Captures the game interface automatically, saving it as a screenshot with the given number.
 def capture_gamestate(number):
+    FOLDER_GRIDS.mkdir(parents=True, exist_ok=True)
     win = get_game_window()
     win_left, win_top, _, _ = get_visible_bounds(win)
     pyautogui.moveTo(win_left + 10, win_top + 10)  # Park cursor off the grid

@@ -54,7 +54,7 @@ def analyze_grid_with_csp(grid_state, total_mines=TOTAL_MINES, rows=TILE_ROWS, c
     for i in range(len(virtual_grid)):
         if virtual_grid[i] in ['1', '2', '3', '4', '5', '6', '7', '8']:
             _, remaining_mines, _, neighbors = neighbor_analysis(
-                virtual_grid[i], virtual_grid, i
+                virtual_grid[i], virtual_grid, i, rows=rows, cols=cols
             )
             if remaining_mines < 0:
                 if DEBUG_CSP:
@@ -84,7 +84,7 @@ def analyze_grid_with_csp(grid_state, total_mines=TOTAL_MINES, rows=TILE_ROWS, c
         for i in range(len(virtual_grid)):
             if virtual_grid[i] in ['1', '2', '3', '4', '5', '6', '7', '8']:
                 totalSafety, remaining_mines, unflagged_neighbors, neighbors = neighbor_analysis(
-                    virtual_grid[i], virtual_grid, i
+                    virtual_grid[i], virtual_grid, i, rows=rows, cols=cols
                 )
 
                 if not unflagged_neighbors:
@@ -115,7 +115,7 @@ def analyze_grid_with_csp(grid_state, total_mines=TOTAL_MINES, rows=TILE_ROWS, c
             active_clues = []
             for i in range(len(virtual_grid)):
                 if virtual_grid[i] in ['1', '2', '3', '4', '5', '6', '7', '8']:
-                    _, rem_mines, unflagged, _ = neighbor_analysis(virtual_grid[i], virtual_grid, i)
+                    _, rem_mines, unflagged, _ = neighbor_analysis(virtual_grid[i], virtual_grid, i, rows=rows, cols=cols)
                     if unflagged and rem_mines > 0:
                         active_clues.append((set(unflagged), rem_mines))
 

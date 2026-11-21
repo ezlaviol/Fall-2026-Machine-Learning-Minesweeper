@@ -7,7 +7,7 @@ from datetime import datetime
 
 from preprocessing import FOLDER_TILES, FOLDER_GRIDS
 from preprocessing import DEBUG_DICTIONARY, DEBUG_VERBOSE
-from preprocessing import TILE_COLUMNS, TOTAL_MINES
+from preprocessing import TILE_ROWS, TILE_COLUMNS, TOTAL_MINES
 from preprocessing import get_visible_bounds
 from preprocessing import from_gamestate_to_grid, get_game_window, cv2
 from csp import analyze_grid_with_csp, DEBUG_CSP
@@ -16,8 +16,10 @@ from interact import execute_moves, pick_tiles, click_smiley
 
 
 # ----- CONFIGURATION -----
-MODEL_PATH = Path("minesweeper_dqn.pth")
-STARTING_TILE = 40          # Center tile (row 5, col 5) for optimal opening
+MODELS_FOLDER = Path("models")
+MODELS_FOLDER.mkdir(parents=True, exist_ok=True)
+MODEL_PATH = MODELS_FOLDER / "minesweeper_dqn.pth"
+
 POST_CLICK_DELAY = 0.15     # Seconds to wait for XP Minesweeper UI to update
 MAX_TURNS = 100             # Safety cap to prevent infinite loops
 NUM_GAMES = 1               # Number of consecutive games to play in a batch
@@ -28,6 +30,16 @@ RESULTS_CSV = Path("results.csv")
 OK_TEMPLATE_PATH = FOLDER_TILES / "Minesweeper High Score OK.png"
 
 DEBUG_OVERLAY = False
+
+# Ensures the 'models/' directory exists and places bare filenames inside it
+# (e.g., 'minesweeper_dqn.pth' -> 'models/minesweeper_dqn.pth'), while still
+# allowing explicit paths like 'models/custom.pth'.
+def resolve_model_path(model_arg):
+    MODELS_FOLDER.mkdir(parents=True, exist_ok=True)
+    path = Path(model_arg)
+    if path.parent == Path("."):
+        return MODELS_FOLDER / path.name
+    return path
 
 # Detects the 'High Score' overlay card and dismisses it.
 # Checks if the white_ratio of the center crop is below the threshold, indicating the overlay.
@@ -111,14 +123,14 @@ def load_templates():
 #   - 'LOSS' if any mine tile is visible
 #   - 'WIN' if all non-mine tiles have been revealed
 #   - 'PLAYING' otherwise
-def check_game_status(grid_state):
+def check_game_status(grid_state, total_mines=TOTAL_MINES):
     if any(tile in MINE_LABELS for tile in grid_state):
         return "LOSS"
 
     unchecked_count = sum(1 for tile in grid_state if tile in UNCHECKED_LABELS)
     flagged_count = sum(1 for tile in grid_state if tile == 'Flagged')
 
-    if unchecked_count == 0 and flagged_count == TOTAL_MINES:
+    if unchecked_count == 0 and flagged_count == total_mines:
         return "WIN"
 
     return "PLAYING"
@@ -163,19 +175,43 @@ def log_game_results(csv_path, outcome, runtime_sec, turns_taken, csp_moves, dqn
 if __name__ == "__main__":
     num_games = NUM_GAMES
     should_reset = False
+    rows = TILE_ROWS
+    cols = TILE_COLUMNS
+    total_mines = TOTAL_MINES
+    model_path = MODEL_PATH
 
     for arg in sys.argv[1:]:
-        if arg.lower() == "reset":
+        lower_arg = arg.lower()
+        if lower_arg == "reset":
             should_reset = True
-        elif arg.lower().startswith("games="):
-            num_games = int(arg.split("=", 1)[1])
-        elif arg.isdigit():
-            num_games = int(arg)
+        elif lower_arg.startswith("games="):
+            num_games = int(lower_arg.split("=", 1)[1])
+        elif lower_arg.startswith("rows="):
+            rows = int(lower_arg.split("=", 1)[1])
+        elif lower_arg.startswith("cols="):
+            cols = int(lower_arg.split("=", 1)[1])
+        elif lower_arg.startswith("mines="):
+            total_mines = int(lower_arg.split("=", 1)[1])
+        elif lower_arg.startswith("model=") or lower_arg.startswith("save_path="):
+            raw_path = Path(arg.split("=", 1)[1])
+            model_path = MODELS_FOLDER / raw_path.name if raw_path.parent == Path(".") else raw_path
+        elif lower_arg.isdigit():
+            num_games = int(lower_arg)
         else:
-            raise ValueError(f"Unknown argument: {arg!r}. Usage: python main.py [reset] [games=N]")
+            raise ValueError(
+                f"Unknown argument: {arg!r}. "
+                "Usage: python main.py [reset] [games=N] [rows=R] [cols=C] [mines=M]"
+            )
 
     if num_games < 1:
         raise ValueError("Number of games must be at least 1.")
+    if rows < 1 or cols < 1:
+        raise ValueError("Rows and columns must be at least 1.")
+    if total_mines < 1 or total_mines >= rows * cols:
+        raise ValueError("Total mines must be at least 1 and less than total tiles.")
+
+    starting_tile = (rows // 2) * cols + (cols // 2)
+
 
     if should_reset and RESULTS_CSV.exists():
         RESULTS_CSV.unlink()
@@ -186,12 +222,12 @@ if __name__ == "__main__":
     templates = load_templates()
 
     # Initialize DQN agent and load pre-trained weights if available
-    agent = DQNAgent()
-    if MODEL_PATH.exists():
-        agent.load(str(MODEL_PATH))
-        print(f"Loaded pre-trained DQN weights from {MODEL_PATH}")
+    agent = DQNAgent(rows=rows, cols=cols)
+    if model_path.exists():
+        agent.load(str(model_path))
+        print(f"Loaded pre-trained DQN weights from {model_path}")
     else:
-        print("Warning: No pre-trained weights found. DQN guesses will use untrained weights.")
+        print(f"Warning: {model_path} not found. DQN guesses will use untrained weights.")
 
     for game_num in range(1, num_games + 1):
         print(f"\n==================== GAME {game_num} / {num_games} ====================")
@@ -209,7 +245,7 @@ if __name__ == "__main__":
 
         while turn < MAX_TURNS:
             # 1. Capture and classify current board state
-            current_grid = from_gamestate_to_grid(turn, templates, capture_first=True)
+            current_grid = from_gamestate_to_grid(turn, templates, capture_first=True, rows=rows, columns=cols)
 
             # Check if the 'High Score' overlay covered the board
             if check_and_dismiss_overlay(turn):
@@ -219,7 +255,7 @@ if __name__ == "__main__":
                 print("Detected and closed High Score overlay!")
                 record_popup_triggered = True
                 # Re-capture the now-unobstructed winning board so status == 'WIN' triggers cleanly
-                current_grid = from_gamestate_to_grid(turn, templates, capture_first=True)
+                current_grid = from_gamestate_to_grid(turn, templates, capture_first=True, rows=rows, columns=cols)
 
             gridStates.append(current_grid)
 
@@ -228,13 +264,13 @@ if __name__ == "__main__":
                 print(f"Grid {turn}:\n{current_grid}")
 
             # 2. Check if the game has already been won or lost
-            status = check_game_status(current_grid)
+            status = check_game_status(current_grid, total_mines=total_mines)
             if status == "WIN":
                 if end_time is None:
                     end_time = last_move_time or time.perf_counter()
                 # Give the High Score fade-in animation 0.35s to appear before exiting
                 pyautogui.sleep(0.35)
-                from_gamestate_to_grid(turn, templates, capture_first=True)
+                from_gamestate_to_grid(turn, templates, capture_first=True, rows=rows, columns=cols)
                 if check_and_dismiss_overlay(turn):
                     print("Detected and closed High Score overlay!")
                     record_popup_triggered = True
@@ -254,8 +290,8 @@ if __name__ == "__main__":
 
                         # 3. Handle fresh board opening (all tiles unchecked)
             if all(tile in UNCHECKED_LABELS for tile in current_grid):
-                print(f"Turn {turn}: Fresh board detected. Opening center tile {STARTING_TILE}...")
-                pick_tiles([STARTING_TILE])
+                print(f"Turn {turn}: Fresh board detected. Opening center tile {starting_tile}...")
+                pick_tiles([starting_tile], rows=rows, columns=cols)
                 last_move_time = time.perf_counter()    # Record the time of the last move
                 pyautogui.sleep(POST_CLICK_DELAY)
                 turn += 1
@@ -263,22 +299,23 @@ if __name__ == "__main__":
 
 
             # 4. Run multi-pass CSP solver
-            safeFlags, safePicks, invalidFlags = analyze_grid_with_csp(current_grid)
+            safeFlags, safePicks, invalidFlags = analyze_grid_with_csp(
+                current_grid, total_mines=total_mines, rows=rows, columns=cols)
             print(f"Turn {turn} | Safe Flags: {safeFlags} | Safe Picks: {safePicks}")
 
             if DEBUG_CSP:
-                debugSafeFlags = [[(idx // TILE_COLUMNS) + 1, (idx % TILE_COLUMNS) + 1] for idx in safeFlags]
-                debugSafePicks = [[(idx // TILE_COLUMNS) + 1, (idx % TILE_COLUMNS) + 1] for idx in safePicks]
+                debugSafeFlags = [[(idx // cols) + 1, (idx % cols) + 1] for idx in safeFlags]
+                debugSafePicks = [[(idx // cols) + 1, (idx % cols) + 1] for idx in safePicks]
                 print(f"Safe flags (row, col): {debugSafeFlags}")
                 print(f"Safe picks (row, col): {debugSafePicks}")
                 if invalidFlags:
-                    debugInvalidFlags = [[(idx // TILE_COLUMNS) + 1, (idx % TILE_COLUMNS) + 1] for idx in invalidFlags]
+                    debugInvalidFlags = [[(idx // cols) + 1, (idx % cols) + 1] for idx in invalidFlags]
                     print(f"Unflagging invalid flags (row, col): {debugInvalidFlags}")
 
 
             # 4b. If CSP found any moves, execute them
             if safeFlags or safePicks or invalidFlags:
-                execute_moves(safeFlags, safePicks, invalid_flags=invalidFlags)
+                execute_moves(safeFlags, safePicks, invalid_flags=invalidFlags, rows=rows, columns=cols)
                 last_move_time = time.perf_counter()
                 csp_moves += len(safeFlags) + len(safePicks)
             else:
@@ -288,9 +325,9 @@ if __name__ == "__main__":
                     print("No valid moves remaining. Stopping.")
                     break
 
-                row, col = (dqn_pick // TILE_COLUMNS) + 1, (dqn_pick % TILE_COLUMNS) + 1
+                row, col = (dqn_pick // cols) + 1, (dqn_pick % cols) + 1
                 print(f"Turn {turn} | No deterministic moves. DQN chose tile {dqn_pick} (row {row}, col {col})")
-                pick_tiles([dqn_pick])
+                pick_tiles([dqn_pick], rows=rows, columns=cols)
                 last_move_time = time.perf_counter()
                 dqn_moves += 1
 
