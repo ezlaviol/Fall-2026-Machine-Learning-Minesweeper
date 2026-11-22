@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from preprocessing import TILE_ROWS, TILE_COLUMNS
+from preprocessing import TILE_ROWS, TILE_COLUMNS, TOTAL_MINES
 
 DEBUG_DQN = False
 

@@ -14,12 +14,17 @@ DEBUG_DICTIONARY = False
 DEBUG_IMAGE = False
 DEBUG_CLASSIFY = False
 
-GRID_SCALE = 1
-GRID_SIDES = 34
-GRID_TOP = 270
-GRID_BOTTOM = 34
-TILE_WIDTH = 32 * GRID_SCALE
-TILE_HEIGHT = 32 * GRID_SCALE
+ctypes.windll.user32.SetProcessDPIAware()
+DPI = ctypes.windll.user32.GetDpiForSystem() // 96  # Evaluates to 1 at 100%, 2 at 200%
+GRID_SCALE = 2  # change this to 2 if set to x2 or 1 if not
+
+TITLE_BAR_HEIGHT = 31 * DPI
+GRID_SIDES = (17 * GRID_SCALE - (GRID_SCALE - 1)) * DPI
+GRID_TOP = TITLE_BAR_HEIGHT + (104 * GRID_SCALE * DPI)
+GRID_BOTTOM = GRID_SIDES
+TILE_WIDTH = 16 * DPI * GRID_SCALE
+TILE_HEIGHT = 16 * DPI * GRID_SCALE
+
 
 TILE_COLUMNS = 9
 TILE_ROWS = 9
@@ -59,7 +64,7 @@ def get_game_window():
     # Filter out small dialog boxes (like the New Record Time popup) so we always grab the main board
     windows = [
         w for w in gw.getWindowsWithTitle(TARGET_APPLICATION)
-        if w.width > 200 and w.height > 200
+        if w.width > 150 and w.height > 200
     ]
     if not windows:
         raise RuntimeError(f"The {TARGET_APPLICATION} window not found")

@@ -375,11 +375,11 @@ if __name__ == "__main__":
         else:
             raise ValueError(f"Unknown argument: {arg!r}")
 
-        if mode == "eval":
-            evaluate_hybrid_agent(games=episodes, rows=rows, cols=cols, num_mines=num_mines, model_path=model_path)
-        elif mode == "eval_sl":
-            evaluate_hybrid_agent(games=episodes, rows=rows, cols=cols, num_mines=num_mines, model_path=model_path, supervised=True)
-        elif mode == "train_sl":
-            train_supervised_agent(episodes=episodes, rows=rows, cols=cols, num_mines=num_mines, save_path=model_path)
-        else:
-            train_hybrid_agent(episodes=episodes, rows=rows, cols=cols, num_mines=num_mines, save_path=model_path)
+    if mode == "eval":
+        evaluate_hybrid_agent(games=episodes, rows=rows, cols=cols, num_mines=num_mines, model_path=model_path)
+    elif mode == "eval_sl":
+        evaluate_hybrid_agent(games=episodes, rows=rows, cols=cols, num_mines=num_mines, model_path=model_path, supervised=True)
+    elif mode == "train_sl":
+        train_supervised_agent(episodes=episodes, rows=rows, cols=cols, num_mines=num_mines, save_path=model_path)
+    else:
+        train_hybrid_agent(episodes=episodes, rows=rows, cols=cols, num_mines=num_mines, save_path=model_path)

@@ -6,6 +6,8 @@ from preprocessing import (
     GRID_BOTTOM,
     TILE_COLUMNS,
     TILE_ROWS,
+    DPI,
+    GRID_SCALE,
     get_visible_bounds,
     split_grid,
     get_game_window,
@@ -14,7 +16,7 @@ from preprocessing import (
 CLICK_DELAY = 0.02
 pyautogui.PAUSE = CLICK_DELAY
 
-SMILEY_OFFSET_ABOVE_GRID = 60  # Pixels above GRID_TOP where the smiley button sits
+SMILEY_OFFSET_ABOVE_GRID = 30 * DPI * GRID_SCALE # Pixels above GRID_TOP where the smiley button sits
 
 # Maps every tile index (0..(rows * cols - 1)) to its exact (x, y) screen center.
 def build_tile_centers(win, rows=TILE_ROWS, cols=TILE_COLUMNS):

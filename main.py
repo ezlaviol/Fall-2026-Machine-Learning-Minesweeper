@@ -136,17 +136,22 @@ def check_game_status(grid_state, total_mines=TOTAL_MINES):
     return "PLAYING"
 
 
-def log_game_results(csv_path, outcome, runtime_sec, turns_taken, csp_moves, dqn_moves, record_popup_shown):
+def log_game_results(csv_path, model, outcome, runtime_sec, turns_taken, csp_moves, dqn_moves, record_popup_shown, 
+                     rows=TILE_ROWS, columns=TILE_COLUMNS, mines=TOTAL_MINES):
     # Appends a single game's performance metrics to a CSV spreadsheet.
     file_exists = csv_path.exists()
     headers = [
+        "Model",
         "Timestamp",
         "Outcome",
         "Runtime (Seconds)",
         "Turns Taken",
         "CSP Moves",
         "DQN Moves",
-        "New Record Popup"
+        "New Record Popup",
+        "Rows",
+        "Columns",
+        "Mines"
     ]
 
     with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
@@ -154,13 +159,17 @@ def log_game_results(csv_path, outcome, runtime_sec, turns_taken, csp_moves, dqn
         if not file_exists:
             writer.writerow(headers)
         writer.writerow([
+            model,
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             outcome,
             round(runtime_sec, 4),
             turns_taken,
             csp_moves,
             dqn_moves,
-            record_popup_shown
+            record_popup_shown,
+            rows,
+            columns,
+            mines
         ])
 
 # no longer in use, replaced by click_smiley()
@@ -294,7 +303,7 @@ if __name__ == "__main__":
                         # 3. Handle fresh board opening (all tiles unchecked)
             if all(tile in UNCHECKED_LABELS for tile in current_grid):
                 print(f"Turn {turn}: Fresh board detected. Opening center tile {starting_tile}...")
-                pick_tiles([starting_tile], rows=rows, columns=cols)
+                pick_tiles([starting_tile], rows=rows, cols=cols)
                 last_move_time = time.perf_counter()    # Record the time of the last move
                 pyautogui.sleep(POST_CLICK_DELAY)
                 turn += 1
@@ -303,7 +312,7 @@ if __name__ == "__main__":
 
             # 4. Run multi-pass CSP solver
             safeFlags, safePicks, invalidFlags = analyze_grid_with_csp(
-                current_grid, total_mines=total_mines, rows=rows, columns=cols)
+                current_grid, total_mines=total_mines, rows=rows, cols=cols)
             print(f"Turn {turn} | Safe Flags: {safeFlags} | Safe Picks: {safePicks}")
 
             if DEBUG_CSP:
@@ -318,7 +327,7 @@ if __name__ == "__main__":
 
             
             if safeFlags or safePicks or invalidFlags: # 4b. If CSP found any moves, execute them
-                execute_moves(safeFlags, safePicks, invalid_flags=invalidFlags, rows=rows, columns=cols)
+                execute_moves(safeFlags, safePicks, invalid_flags=invalidFlags, rows=rows, cols=cols)
                 last_move_time = time.perf_counter()
                 csp_moves += len(safeFlags) + len(safePicks)
             else: # 5. CSP found no guaranteed moves -> Fallback to neural network guess
@@ -349,12 +358,16 @@ if __name__ == "__main__":
 
         log_game_results(
             csv_path=RESULTS_CSV,
+            model=raw_path,
             outcome=final_outcome,
             runtime_sec=elapsed_runtime,
             turns_taken=turn,
             csp_moves=csp_moves,
             dqn_moves=dqn_moves,
-            record_popup_shown=record_popup_triggered
+            record_popup_shown=record_popup_triggered,
+            rows=rows,
+            columns=cols,
+            mines=total_mines
         )
 
         print(f"Logged results to {RESULTS_CSV}")
