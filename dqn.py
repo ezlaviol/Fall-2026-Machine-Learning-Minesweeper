@@ -33,12 +33,17 @@ STATE_ENCODING = {
 GAMMA = 0.1
 
 
-# Encodes the Minesweeper grid into a 2-channel 2D array (2, rows, cols).
+# Encodes the Minesweeper grid into a 3-channel 2D array (3, rows, cols).
 # Channel 0 tells the network what each tile is (numbers 1–8, flagged, or unchecked)
 # Channel 1 acts as a binary map (1 or 0) telling it which tiles are legal to click.
-def encode_grid(grid_state, rows=TILE_ROWS, cols=TILE_COLUMNS):
+# Channel 2 is the remaining mine ratio (remaining_mines / remaining_unchecked), 
+# giving the local CNN global risk context.
+def encode_grid(grid_state, rows=TILE_ROWS, cols=TILE_COLUMNS, total_mines=TOTAL_MINES):
     values = np.zeros((rows, cols), dtype=np.float32)
     clickable_mask = np.zeros((rows, cols), dtype=np.float32)
+
+    flagged_count = 0
+    unchecked_count = 0
 
     for idx, label in enumerate(grid_state):
         r = idx // cols
@@ -46,12 +51,18 @@ def encode_grid(grid_state, rows=TILE_ROWS, cols=TILE_COLUMNS):
         values[r, c] = STATE_ENCODING.get(label, -1.0)
         if label in ('Unchecked', 'Unchecked Question'):
             clickable_mask[r, c] = 1.0
+            unchecked_count += 1
+        elif label == 'Flagged':
+            flagged_count += 1
 
-    # Stack both 2D arrays along axis 0 to create a 2-channel "image" for the CNN
-    return np.stack([values, clickable_mask], axis=0)
+    remaining_mines = max(0, total_mines - flagged_count)
+    density = remaining_mines / max(1, unchecked_count)
+    mine_density_channel = np.full((rows, cols), density, dtype=np.float32)
+
+    return np.stack([values, clickable_mask, mine_density_channel], axis=0)
 
 # Fully Convolutional Q-Network:
-# Takes a (batch, 2, rows, cols) board tensor and predicts a Q-value (expected reward)
+# Takes a (batch, 3, rows, cols) board tensor and predicts a Q-value (expected reward)
 # for every tile on the board. Because it uses only convolutional layers (no Linear layers),
 # the same trained weights work on any board size (6x6, 9x9, 16x30, etc.).
 class MinesweeperCNN(nn.Module):
@@ -61,7 +72,7 @@ class MinesweeperCNN(nn.Module):
         # Three 3x3 conv layers with padding=1 preserve the rows and columns
         # while letting each tile "see" a 7x7 neighborhood around itself.
         self.conv = nn.Sequential(
-            nn.Conv2d(2, 64, kernel_size=3, padding=1),
+            nn.Conv2d(3, 64, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.ReLU(),
@@ -97,6 +108,7 @@ class DQNAgent:
         buffer_size=20000,
         batch_size=64,
         target_update_freq=200,
+        total_mines=TOTAL_MINES,
     ):
         # use GPU if available, otherwise fall back to CPU
         # if this were run on a better laptop than mine this would be useful lol 
@@ -126,6 +138,7 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
         self.loss_fn = nn.SmoothL1Loss()    # Huber loss prevents exploding gradients from large penalties
         self.memory = deque(maxlen=buffer_size) # circular replay buffer storing past transitions
+        self.total_mines = total_mines
 
     # return a list of 1d  tile indices that aren't revealed or flagged
     def get_valid_actions(self, grid_state):
@@ -180,7 +193,7 @@ class DQNAgent:
             return random.choice(valid_actions)
 
         # Convert board to tensor and add batch dimension: (1, 2, rows, cols)
-        encoded = encode_grid(grid_state, rows=self.rows, cols=self.cols)
+        encoded = encode_grid(grid_state, rows=self.rows, cols=self.cols, total_mines=self.total_mines)
         state_tensor = torch.tensor(encoded, dtype=torch.float32).unsqueeze(0).to(self.device)
         
         with torch.no_grad():   # Disable gradient tracking during inference for speed
@@ -193,13 +206,73 @@ class DQNAgent:
 
         return int(torch.argmax(masked_q_values).item())
 
+    # Supervised Inference:
+    # Predicts the mine probability (0.0 to 1.0) for every tile using sigmoid(logits),
+    # then selects the valid frontier tile with the LOWEST predicted mine probability.
+    def select_safest_action(self, grid_state):
+        valid_actions = self.get_valid_actions(grid_state)
+        if not valid_actions:
+            return None
+
+        encoded = encode_grid(grid_state, rows=self.rows, cols=self.cols, total_mines=self.total_mines)
+        state_tensor = torch.tensor(encoded, dtype=torch.float32).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            logits = self.policy_net(state_tensor).squeeze(0)
+            mine_probs = torch.sigmoid(logits)
+
+        # Mask out invalid/non-frontier tiles with +infinity so argmin picks the safest valid tile
+        mask = torch.full((self.num_actions,), float('inf'), device=self.device)
+        mask[valid_actions] = 0.0
+        masked_probs = mine_probs + mask
+
+        return int(torch.argmin(masked_probs).item())
+
+    # Trains policy_net using Binary Cross-Entropy (BCEWithLogitsLoss) against the
+    # true hidden mine locations, masked strictly to unrevealed tiles.
+    def train_supervised_batch(self, states_list, mine_sets):
+        if not states_list:
+            return 0.0
+
+        encoded_states = np.array([
+            encode_grid(s, rows=self.rows, cols=self.cols, total_mines=self.total_mines) for s in states_list
+        ])
+        states_t = torch.tensor(encoded_states, dtype=torch.float32, device=self.device)
+
+        # Build ground-truth binary targets (1.0 = mine, 0.0 = safe) and unrevealed masks
+        targets = np.zeros((len(states_list), self.num_actions), dtype=np.float32)
+        unrevealed_mask = np.zeros((len(states_list), self.num_actions), dtype=np.float32)
+
+        for row_idx, (state, mines) in enumerate(zip(states_list, mine_sets)):
+            for tile_idx, label in enumerate(state):
+                if label in ('Unchecked', 'Unchecked Question'):
+                    unrevealed_mask[row_idx, tile_idx] = 1.0
+                    if tile_idx in mines:
+                        targets[row_idx, tile_idx] = 1.0
+
+        targets_t = torch.tensor(targets, dtype=torch.float32, device=self.device)
+        mask_t = torch.tensor(unrevealed_mask, dtype=torch.float32, device=self.device)
+
+        logits = self.policy_net(states_t)
+
+        # Compute per-tile BCE loss and average only over unrevealed tiles
+        bce = nn.functional.binary_cross_entropy_with_logits(logits, targets_t, reduction='none')
+        masked_loss = (bce * mask_t).sum() / mask_t.sum().clamp(min=1.0)
+
+        self.optimizer.zero_grad()
+        masked_loss.backward()
+        self.optimizer.step()
+
+        return masked_loss.item()
+
+
     # Saves a single (state, action, reward, next_state, done) experience into replay memory.
     def store_transition(self, state, action, reward, next_state, done):
         self.memory.append((
-            encode_grid(state, rows=self.rows, cols=self.cols),
+            encode_grid(state, rows=self.rows, cols=self.cols, total_mines=self.total_mines),
             action,
             reward,
-            encode_grid(next_state, rows=self.rows, cols=self.cols),
+            encode_grid(next_state, rows=self.rows, cols=self.cols, total_mines=self.total_mines),
             done
         ))
 

@@ -159,6 +159,7 @@ def train_hybrid_agent(
     agent = DQNAgent(
         rows=rows,
         cols=cols,
+        total_mines=num_mines,
         lr=1e-3,
         gamma=GAMMA,
         epsilon_start=1.0,
@@ -225,11 +226,12 @@ def evaluate_hybrid_agent(
     cols=TILE_COLUMNS,
     num_mines=TOTAL_MINES,
     model_path=MODEL_PATH,
+    supervised=False,
 ):
     model_path = resolve_model_path(model_path)
 
     env = MinesweeperEnv(rows=rows, cols=cols, num_mines=num_mines)
-    agent = DQNAgent(rows=rows, cols=cols)
+    agent = DQNAgent(rows=rows, cols=cols, total_mines=num_mines)
     agent.load(str(model_path))
 
     starting_tile = (rows // 2) * cols + (cols // 2)
@@ -255,7 +257,7 @@ def evaluate_hybrid_agent(
                     state = env.get_grid_state()
                 continue
 
-            action = agent.select_action(state, training=False)
+            action = agent.select_safest_action(state) if supervised else agent.select_action(state, training=False)
             if action is None:
                 break
             state, _, done, info = env.step(action)
@@ -264,6 +266,84 @@ def evaluate_hybrid_agent(
 
     win_rate = (wins / games) * 100
     print(f"Evaluated {games} games on {rows}x{cols} ({num_mines} mines): {win_rate:.2f}% win rate ({wins}/{games})")
+
+def train_supervised_agent(
+    episodes=20000,
+    rows=TILE_ROWS,
+    cols=TILE_COLUMNS,
+    num_mines=TOTAL_MINES,
+    save_path="minesweeper_sl_9x9_10m.pth",
+    batch_size=128,
+):
+    save_path = resolve_model_path(save_path)
+    env = MinesweeperEnv(rows=rows, cols=cols, num_mines=num_mines)
+    agent = DQNAgent(rows=rows, cols=cols, total_mines=num_mines, lr=1e-3)
+
+    starting_tile = (rows // 2) * cols + (cols // 2)
+    state_buffer = []
+    mine_buffer = []
+    recent_wins = deque(maxlen=500)
+    total_loss = 0.0
+    loss_steps = 0
+
+    for ep in range(1, episodes + 1):
+        state = env.reset()
+        state, _, done, info = env.step(starting_tile)
+
+        while not done:
+            safe_flags, safe_picks, invalid_flags = analyze_grid_with_csp(
+                state, total_mines=num_mines, rows=rows, cols=cols
+            )
+            if safe_flags or safe_picks or invalid_flags:
+                for f in safe_flags:
+                    env.flag(f)
+                for p in safe_picks:
+                    state, _, done, info = env.step(p)
+                    if done:
+                        break
+                if not done:
+                    state = env.get_grid_state()
+                continue
+
+            # Record this forced-guess board state and its exact hidden mine map
+            state_buffer.append(list(state))
+            mine_buffer.append(set(env.mines))
+
+            # Early episodes explore randomly to diversify board states; later episodes use model
+            if ep < episodes // 4 or random.random() < 0.15:
+                valid = agent.get_valid_actions(state)
+                action = random.choice(valid) if valid else None
+            else:
+                action = agent.select_safest_action(state)
+
+            if action is None:
+                break
+
+            state, _, done, info = env.step(action)
+
+            # Train whenever we have collected a full mini-batch
+            if len(state_buffer) >= batch_size:
+                loss = agent.train_supervised_batch(state_buffer, mine_buffer)
+                total_loss += loss
+                loss_steps += 1
+                state_buffer.clear()
+                mine_buffer.clear()
+
+        recent_wins.append(int(info.get("won", False)))
+
+        if ep % 1000 == 0:
+            win_rate = (sum(recent_wins) / len(recent_wins)) * 100
+            avg_loss = total_loss / max(1, loss_steps)
+            print(
+                f"Episode {ep}/{episodes} | "
+                f"Recent Win Rate: {win_rate:.1f}% | "
+                f"BCE Loss: {avg_loss:.4f}"
+            )
+            total_loss = 0.0
+            loss_steps = 0
+
+    agent.save(save_path)
+    print(f"\nSupervised training complete! Saved weights to {save_path}")
 
 
 if __name__ == "__main__":
@@ -279,7 +359,7 @@ if __name__ == "__main__":
 
     for arg in sys.argv[1:]:
         lower_arg = arg.lower()
-        if lower_arg in ("train", "eval"):
+        if lower_arg in ("train", "eval", "train_sl", "eval_sl"):
             mode = lower_arg
         elif lower_arg.startswith("episodes=") or lower_arg.startswith("games="):
             episodes = int(lower_arg.split("=", 1)[1])
@@ -295,7 +375,11 @@ if __name__ == "__main__":
         else:
             raise ValueError(f"Unknown argument: {arg!r}")
 
-    if mode == "eval":
-        evaluate_hybrid_agent(games=episodes, rows=rows, cols=cols, num_mines=num_mines, model_path=model_path)
-    else:
-        train_hybrid_agent(episodes=episodes, rows=rows, cols=cols, num_mines=num_mines, save_path=model_path)
+        if mode == "eval":
+            evaluate_hybrid_agent(games=episodes, rows=rows, cols=cols, num_mines=num_mines, model_path=model_path)
+        elif mode == "eval_sl":
+            evaluate_hybrid_agent(games=episodes, rows=rows, cols=cols, num_mines=num_mines, model_path=model_path, supervised=True)
+        elif mode == "train_sl":
+            train_supervised_agent(episodes=episodes, rows=rows, cols=cols, num_mines=num_mines, save_path=model_path)
+        else:
+            train_hybrid_agent(episodes=episodes, rows=rows, cols=cols, num_mines=num_mines, save_path=model_path)

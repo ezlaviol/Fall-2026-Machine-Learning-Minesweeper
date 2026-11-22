@@ -222,12 +222,15 @@ if __name__ == "__main__":
     templates = load_templates()
 
     # Initialize DQN agent and load pre-trained weights if available
-    agent = DQNAgent(rows=rows, cols=cols)
+    is_supervised = "_sl_" in model_path.name.lower()
+
+    agent = DQNAgent(rows=rows, cols=cols, total_mines=total_mines)
     if model_path.exists():
         agent.load(str(model_path))
-        print(f"Loaded pre-trained DQN weights from {model_path}")
+        mode_label = "Supervised (mine-probability)" if is_supervised else "DQN (Q-value)"
+        print(f"Loaded {mode_label} weights from {model_path}")
     else:
-        print(f"Warning: {model_path} not found. DQN guesses will use untrained weights.")
+        print(f"Warning: {model_path} not found. Guesses will use untrained weights.")
 
     for game_num in range(1, num_games + 1):
         print(f"\n==================== GAME {game_num} / {num_games} ====================")
@@ -313,23 +316,27 @@ if __name__ == "__main__":
                     print(f"Unflagging invalid flags (row, col): {debugInvalidFlags}")
 
 
-            # 4b. If CSP found any moves, execute them
-            if safeFlags or safePicks or invalidFlags:
+            
+            if safeFlags or safePicks or invalidFlags: # 4b. If CSP found any moves, execute them
                 execute_moves(safeFlags, safePicks, invalid_flags=invalidFlags, rows=rows, columns=cols)
                 last_move_time = time.perf_counter()
                 csp_moves += len(safeFlags) + len(safePicks)
-            else:
-                # 5. CSP found no guaranteed moves -> Fallback to DQN guess
-                dqn_pick = agent.select_action(current_grid, training=False)
+            else: # 5. CSP found no guaranteed moves -> Fallback to neural network guess
+                if is_supervised:
+                    dqn_pick = agent.select_safest_action(current_grid)
+                else:
+                    dqn_pick = agent.select_action(current_grid, training=False)
+
                 if dqn_pick is None:
                     print("No valid moves remaining. Stopping.")
                     break
 
                 row, col = (dqn_pick // cols) + 1, (dqn_pick % cols) + 1
-                print(f"Turn {turn} | No deterministic moves. DQN chose tile {dqn_pick} (row {row}, col {col})")
-                pick_tiles([dqn_pick], rows=rows, columns=cols)
+                print(f"Turn {turn} | No deterministic moves. Model chose tile {dqn_pick} (row {row}, col {col})")
+                pick_tiles([dqn_pick], rows=rows, cols=cols)
                 last_move_time = time.perf_counter()
                 dqn_moves += 1
+
 
 
             # Wait briefly for Windows XP Minesweeper to render the updated tiles before next capture
