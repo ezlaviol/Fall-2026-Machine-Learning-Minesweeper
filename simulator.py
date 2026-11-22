@@ -5,10 +5,16 @@ from preprocessing import TILE_ROWS, TILE_COLUMNS, TOTAL_MINES
 from csp import analyze_grid_with_csp
 from dqn import DQNAgent
 from dqn import GAMMA
+from main import LOGS_FOLDER
 
 MODEL_PATH = "minesweeper_dqn.pth"  # Path to the trained DQN model
 MODELS_FOLDER = Path("models")
 MODELS_FOLDER.mkdir(parents=True, exist_ok=True)
+
+LOGS_FOLDER.mkdir(parents=True, exist_ok=True)
+TRAINING_FOLDER = Path("logs/training")
+TRAINING_FOLDER.mkdir(parents=True, exist_ok=True)
+
 
 # Ensures the 'models/' directory exists and places bare filenames inside it
 # (e.g., 'minesweeper_dqn.pth' -> 'models/minesweeper_dqn.pth'), while still
@@ -215,6 +221,12 @@ def train_hybrid_agent(
                 f"Recent Win Rate: {win_rate:.1f}% | "
                 f"Epsilon: {agent.epsilon:.3f}"
             )
+            log_file = Path(f"{TRAINING_FOLDER}/dqn_training_log.csv")
+            if ep == 500:
+                log_file.write_text("episode,win_rate,epsilon\n")
+            with log_file.open("a") as f:
+                f.write(f"{ep},{win_rate:.2f},{agent.epsilon:.4f}\n")
+
 
     agent.save(save_path)
     print(f"\nTraining complete! Saved weights to {save_path}")
@@ -341,6 +353,11 @@ def train_supervised_agent(
             )
             total_loss = 0.0
             loss_steps = 0
+            log_file = Path(f"{TRAINING_FOLDER}/sl_training_log.csv")
+            if ep == 1000:
+                log_file.write_text("episode,win_rate,bce_loss\n")
+            with log_file.open("a") as f:
+                f.write(f"{ep},{win_rate:.2f},{avg_loss:.4f}\n")
 
     agent.save(save_path)
     print(f"\nSupervised training complete! Saved weights to {save_path}")

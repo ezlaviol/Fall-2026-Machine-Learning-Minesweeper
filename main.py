@@ -29,6 +29,12 @@ UNCHECKED_LABELS = {'Unchecked', 'Unchecked Question'}
 RESULTS_CSV = Path("results.csv")
 OK_TEMPLATE_PATH = FOLDER_TILES / "Minesweeper High Score OK.png"
 
+LOGS_FOLDER = Path("logs")
+LOGS_FOLDER.mkdir(parents=True, exist_ok=True)
+RESULTS_FOLDER = Path("logs/results")
+RESULTS_FOLDER.mkdir(parents=True, exist_ok=True)
+RESULTS_PATH = RESULTS_FOLDER / RESULTS_CSV
+
 DEBUG_OVERLAY = False
 
 # Ensures the 'models/' directory exists and places bare filenames inside it
@@ -357,7 +363,7 @@ if __name__ == "__main__":
         elapsed_runtime = (end_time or time.perf_counter()) - start_time if start_time is not None else 0.0
 
         log_game_results(
-            csv_path=RESULTS_CSV,
+            csv_path=RESULTS_PATH,
             model=raw_path,
             outcome=final_outcome,
             runtime_sec=elapsed_runtime,

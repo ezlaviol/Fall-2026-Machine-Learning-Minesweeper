@@ -499,6 +499,3 @@ minesweeper_dqn_9x9_10m.pth,2026-11-21 23:44:17,Victory,6.5857,5,73,0,False,9,9,
 minesweeper_dqn_9x9_10m.pth,2026-11-21 23:44:24,Victory,4.4527,4,40,0,False,9,9,10
 minesweeper_dqn_9x9_10m.pth,2026-11-21 23:44:34,Victory,8.1781,9,29,4,False,9,9,10
 minesweeper_dqn_9x9_10m.pth,2026-11-21 23:44:38,Defeat,2.0316,3,0,2,False,9,9,10
-minesweeper_dqn_9x9_10m.pth,2026-11-22 00:38:33,Victory,3.9187,4,30,0,False,9,9,10
-minesweeper_sl_9x9_10m.pth,2026-11-22 00:47:56,Defeat,0.0,0,0,0,False,9,9,10
-minesweeper_sl_9x9_10m.pth,2026-11-22 00:49:56,Victory,4.1279,4,36,0,False,9,9,10

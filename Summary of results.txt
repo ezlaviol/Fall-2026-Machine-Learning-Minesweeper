@@ -1,0 +1,42 @@
+Summary of results.csv (500 total games)
+==============================================================================
+Model: minesweeper_sl_9x9_10m.pth | Board: 9x9 (10 mines)
+  Games Played      : 250 (Wins: 183, Losses: 67)
+  Win Rate          : 73.20%
+  Avg Runtime (All) : 5.40s (Min: 1.11s, Max: 17.25s)
+  Avg Runtime (Win) : 6.41s (Min: 2.16s, Max: 17.25s)
+  Avg Runtime (Loss): 2.64s (Min: 1.11s, Max: 11.88s)
+  Avg Turns / Game  : 5.85
+  Avg CSP Moves     : 27.54 (93.9% of all moves)
+  Avg Model Guesses : 1.78 (6.1% of all moves)
+  Record Popups     : 5
+------------------------------------------------------------------------------
+Model: minesweeper_dqn_9x9_10m.pth | Board: 9x9 (10 mines)
+  Games Played      : 250 (Wins: 176, Losses: 74)
+  Win Rate          : 70.40%
+  Avg Runtime (All) : 5.21s (Min: 1.15s, Max: 12.29s)
+  Avg Runtime (Win) : 6.23s (Min: 1.96s, Max: 12.29s)
+  Avg Runtime (Loss): 2.78s (Min: 1.15s, Max: 7.15s)
+  Avg Turns / Game  : 5.64
+  Avg CSP Moves     : 25.68 (93.4% of all moves)
+  Avg Model Guesses : 1.83 (6.6% of all moves)
+  Record Popups     : 1
+------------------------------------------------------------------------------
+
+(venv) PS G:\Computer Stuff\Coding\Fall-2026-Machine-Learning-Minesweeper> python simulator.py eval_sl games=1000 rows=9 cols=9 mines=10 model=minesweeper_sl_9x9_10m.pth
+>> 
+Evaluated 1000 games on 9x9 (10 mines): 71.40% win rate (714/1000)
+(venv) PS G:\Computer Stuff\Coding\Fall-2026-Machine-Learning-Minesweeper> python simulator.py eval games=1000 rows=9 cols=9 mines=10 model=minesweeper_dqn_9x9_10m.pth
+Evaluated 1000 games on 9x9 (10 mines): 71.70% win rate (717/1000)
+(venv) PS G:\Computer Stuff\Coding\Fall-2026-Machine-Learning-Minesweeper> python simulator.py eval_sl games=1000 rows=9 cols=9 mines=10 model=minesweeper_sl_9x9_10m.pth
+>> 
+Evaluated 1000 games on 9x9 (10 mines): 72.90% win rate (729/1000)
+(venv) PS G:\Computer Stuff\Coding\Fall-2026-Machine-Learning-Minesweeper> python simulator.py eval games=1000 rows=9 cols=9 mines=10 model=minesweeper_dqn_9x9_10m.pth  
+Evaluated 1000 games on 9x9 (10 mines): 70.50% win rate (705/1000)
+(venv) PS G:\Computer Stuff\Coding\Fall-2026-Machine-Learning-Minesweeper> python simulator.py eval games=1000 rows=9 cols=9 mines=10 model=minesweeper_dqn_9x9_10m.pth  
+Evaluated 1000 games on 9x9 (10 mines): 68.20% win rate (682/1000)
+(venv) PS G:\Computer Stuff\Coding\Fall-2026-Machine-Learning-Minesweeper> python simulator.py eval games=5000 rows=9 cols=9 mines=10 model=minesweeper_dqn_9x9_10m.pth
+Evaluated 5000 games on 9x9 (10 mines): 70.26% win rate (3513/5000)
+(venv) PS G:\Computer Stuff\Coding\Fall-2026-Machine-Learning-Minesweeper> python simulator.py eval_sl games=5000 rows=9 cols=9 mines=10 model=minesweeper_sl_9x9_10m.pth   
+>> 
+Evaluated 5000 games on 9x9 (10 mines): 70.84% win rate (3542/5000)

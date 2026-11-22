@@ -4,5 +4,6 @@ __pycache__/
 
 # Ignore generated grid images
 grids/
-# models/test_*.pth
-models/
+models/*test*.pth
+models/*temp*.pth
+graphs/
